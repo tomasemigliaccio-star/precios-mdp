@@ -1,0 +1,52 @@
+name: Actualizar precios
+
+on:
+  schedule:
+    - cron: "0 16 * * *"   # todos los días 13:00 hora Argentina (16:00 UTC)
+  workflow_dispatch:        # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Descargar y filtrar el SEPA
+        env:
+          SEPA_URL: ${{ vars.SEPA_URL }}
+          ZONA: ${{ vars.ZONA }}
+        run: |
+          set -e
+          NOMBRES=(x lunes martes miercoles jueves viernes sabado domingo)
+          DIA=${NOMBRES[$(TZ=America/Argentina/Buenos_Aires date +%u)]}
+          URL="${SEPA_URL//\{dia\}/$DIA}"
+          echo "Descargando $URL"
+          curl -L --fail --retry 3 -o sepa.zip "$URL"
+          mkdir -p sitio/datos
+          python filtrar_sepa.py sepa.zip --zona "${ZONA:-Mar del Plata}" --liviano --salida sitio/datos
+          cp index.html sitio/
+          TZ=America/Argentina/Buenos_Aires date '+%d/%m/%Y %H:%M' > sitio/datos/fecha.txt
+          rm sepa.zip
+          ls -lh sitio/datos
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: sitio
+      - id: deployment
+        uses: actions/deploy-pages@v4
