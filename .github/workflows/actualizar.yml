@@ -32,17 +32,20 @@ jobs:
           ZONA: ${{ vars.ZONA }}
         run: |
           set -e
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
           URL="$SEPA_URL"
           if [ -z "$URL" ]; then
             # Busca solo el enlace del zip de AYER en la página oficial (hay un zip por día de la semana)
             NOMBRES=(x lunes martes miercoles jueves viernes sabado domingo)
             DIA=${NOMBRES[$(TZ=America/Argentina/Buenos_Aires date -d yesterday +%u)]}
-            curl -sL --fail --retry 3 -o pagina.html "https://datos.gob.ar/dataset/produccion-precios-claros---base-sepa"
+            echo "Buscando el enlace en la página oficial..."
+            curl -sS -L --fail --retry 2 --connect-timeout 30 --max-time 120 -A "$UA" -w "Página oficial: HTTP %{http_code}\n" -o pagina.html "https://datos.gob.ar/dataset/produccion-precios-claros---base-sepa"
             URL=$(grep -oE "https://datos\.produccion\.gob\.ar/[^\"' )<>]*/download/sepa_${DIA}\.zip" pagina.html | head -n1 || true)
           fi
           if [ -z "$URL" ]; then echo "No encontré el enlace de descarga del SEPA"; exit 1; fi
           echo "Descargando $URL"
-          curl -L --fail --retry 3 -o sepa.zip "$URL"
+          curl -sS -L --fail --retry 2 --connect-timeout 30 --max-time 7200 -A "$UA" -w "Descarga: HTTP %{http_code}, %{size_download} bytes\n" -o sepa.zip "$URL"
+          ls -lh sepa.zip
           mkdir -p sitio/datos
           python filtrar_sepa.py sepa.zip --zona "${ZONA:-Mar del Plata}" --liviano --salida sitio/datos
           cp index.html sitio/
